@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AuraSpace Mobile Uploader</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    :root {
+      --primary: #6366f1;
+      --secondary: #a855f7;
+      --bg: #07071a;
+      --glass: rgba(24, 32, 58, 0.65);
+    }
+    body {
+      margin: 0; padding: 20px;
+      background: var(--bg); color: white;
+      font-family: 'Outfit', sans-serif;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 100vh; text-align: center;
+    }
+    h1 {
+      margin-bottom: 5px; font-size: 28px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    p { color: #94a3b8; font-size: 14px; margin-bottom: 40px; }
+    
+    .target-badge {
+      display: inline-block; padding: 8px 16px;
+      background: rgba(99,102,241,0.2); border: 1px solid var(--primary);
+      border-radius: 20px; font-size: 14px; font-weight: 600;
+      margin-bottom: 40px; text-transform: uppercase; letter-spacing: 1px;
+    }
+
+    .btn-large {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      width: 100%; max-width: 300px; height: 120px;
+      background: var(--glass); border: 2px dashed rgba(255,255,255,0.2);
+      border-radius: 20px; color: white; font-size: 16px; font-weight: 600;
+      margin-bottom: 20px; cursor: pointer; transition: 0.2s;
+    }
+    .btn-large:active { transform: scale(0.97); background: rgba(255,255,255,0.1); }
+    .btn-large.primary { border-color: var(--primary); border-style: solid; background: rgba(99,102,241,0.1); }
+    .icon { font-size: 32px; margin-bottom: 8px; }
+
+    #loading { display: none; margin-top: 20px; font-weight: 600; color: #34d399; }
+    #success { display: none; margin-top: 20px; font-weight: 600; color: #34d399; }
+    
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+
+  <h1>AuraSpace</h1>
+  <p>Beam photos directly to your PC</p>
+
+  <div id="target-display" class="target-badge">Target: Unknown</div>
+
+  <button class="btn-large primary" onclick="document.getElementById('file-cam').click()">
+    <span class="icon">📷</span>
+    Take Photo
+  </button>
+
+  <button class="btn-large" onclick="document.getElementById('file-gal').click()">
+    <span class="icon">🖼️</span>
+    Choose from Gallery
+  </button>
+
+  <input type="file" id="file-cam" accept="image/*" capture="environment">
+  <input type="file" id="file-gal" accept="image/*">
+
+  <div id="loading">🚀 Beaming to Desktop...</div>
+  <div id="success">✅ Sent Successfully!</div>
+
+  <script>
+    const socket = io();
+    
+    // Parse target from URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const target = urlParams.get('target') || 'room';
+    
+    document.getElementById('target-display').innerText = `Target: ${target === 'room' ? '🏠 Room' : '🛋️ Furniture'}`;
+
+    function handleFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('success').style.display = 'none';
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const dataURL = evt.target.result;
+        socket.emit('send-image', {
+          target: target,
+          image: dataURL
+        });
+        
+        setTimeout(() => {
+          document.getElementById('loading').style.display = 'none';
+          document.getElementById('success').style.display = 'block';
+        }, 500);
+      };
+      reader.readAsDataURL(file);
+      
+      // Reset inputs
+      document.getElementById('file-cam').value = '';
+      document.getElementById('file-gal').value = '';
+    }
+
+    document.getElementById('file-cam').addEventListener('change', handleFile);
+    document.getElementById('file-gal').addEventListener('change', handleFile);
+  </script>
+</body>
+</html>

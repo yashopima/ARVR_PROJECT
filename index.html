@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  <title>AuraSpace | 3D Furniture Viewer</title>
+  <meta name="description" content="Upload your room photo and place furniture in an immersive 3D environment.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+  <!-- A-Frame -->
+  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+  <!-- Socket.IO -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="overlay">
+    <div class="loader"></div>
+    <p class="loading-text">Loading AuraSpace...</p>
+  </div>
+
+  <!-- Camera Modal -->
+  <div id="camera-modal" class="overlay hidden" style="z-index: 4000; background: #000;">
+    <video id="camera-feed" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(1);"></video>
+    <div style="position: absolute; bottom: 40px; left: 0; right: 0; display: flex; justify-content: center; gap: 30px; align-items: center;">
+      <button id="btn-close-camera" class="action-btn danger" style="padding: 12px 18px; border-radius: 30px; flex: none;">✖ Close</button>
+      <button id="btn-snap-camera" style="width: 70px; height: 70px; border-radius: 50%; background: #fff; border: 4px solid var(--primary); box-shadow: 0 0 15px var(--primary-glow); cursor: pointer; transition: transform 0.2s;"></button>
+      <button id="btn-flip-camera" class="action-btn" style="padding: 12px 18px; border-radius: 30px; flex: none;">🔄 Flip</button>
+    </div>
+  </div>
+
+  <!-- Drag Hint Toast -->
+  <div id="drag-hint" class="drag-hint hidden">
+    <span>👆 Click &amp; drag to move furniture</span>
+  </div>
+
+  <!-- AuraSync Status -->
+  <div id="aurasync-status" class="overlay hidden" style="top: 20px; left: 50%; transform: translateX(-50%); height: auto; padding: 10px 20px; background: rgba(99, 102, 241, 0.9); border-radius: 30px; display: flex; align-items: center; gap: 15px; z-index: 6000; border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);">
+    <div class="pulse-icon" style="width: 12px; height: 12px; background: #fff; border-radius: 50%; animation: pulse 1.5s infinite;"></div>
+    <span style="font-weight: 600; font-size: 14px;" id="aura-status-text">Voice Active...</span>
+    <button id="btn-stop-voice" style="background: rgba(255,255,255,0.2); border: none; color: #fff; padding: 4px 10px; border-radius: 15px; cursor: pointer; font-size: 12px; font-weight: 700; transition: background 0.2s;">DONE</button>
+  </div>
+
+  <!-- QR Code Modal -->
+  <div id="qr-modal" class="overlay hidden" style="z-index: 5000; background: rgba(7,7,26,0.9);">
+    <div style="background: white; padding: 20px; border-radius: 20px; text-align: center;">
+      <h3 style="color: black; margin-bottom: 10px; font-family: var(--font);">Scan with your phone</h3>
+      <img id="qr-img" src="" alt="QR Code" style="width: 250px; height: 250px; display: block; margin: 0 auto; border-radius: 10px;">
+      <p style="color: #666; font-size: 14px; margin-top: 10px;">Scan to connect instantly</p>
+      <button id="btn-close-qr" class="action-btn danger" style="margin-top: 20px; width: 100%;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Upload Options Modal -->
+  <div id="upload-options-modal" class="overlay hidden" style="z-index: 5000; background: rgba(7,7,26,0.9);">
+    <div style="background: var(--bg-glass); padding: 24px; border-radius: 20px; border: 1px solid var(--border); text-align: center; width: 90%; max-width: 340px;">
+      <h3 style="margin-bottom: 20px; font-family: var(--font);">Upload Method</h3>
+      <button id="btn-opt-computer" class="upload-btn-large" style="margin-bottom: 12px; padding: 16px;">
+        <span class="icon-big">💻</span>
+        <span class="upload-title">From this device</span>
+      </button>
+      <button id="btn-opt-mobile" class="upload-btn-large" style="margin-bottom: 20px; padding: 16px; border-color: rgba(168,85,247,0.3);">
+        <span class="icon-big">📱</span>
+        <span class="upload-title">From Mobile via WiFi</span>
+      </button>
+      <button id="btn-close-options" class="action-btn danger" style="width: 100%;">Cancel</button>
+    </div>
+  </div>
+
+  <!-- UI Toggle Button -->
+  <button id="btn-toggle-ui" class="toggle-ui-btn">👁️ Hide UI</button>
+
+  <!-- UI Overlay -->
+  <div class="ui-container" id="ui-container">
+    <div class="brand">
+      <h1>Aura<span>Space</span></h1>
+      <p class="brand-sub">3D Room Visualizer</p>
+    </div>
+
+    <!-- STEP 1: Room Upload -->
+    <div class="controls-wrapper" id="step-room">
+      <div class="step-header">
+        <span class="step-badge">1</span>
+        <p class="label">Upload Your Room</p>
+      </div>
+      <div id="room-upload-area" style="display: flex; gap: 10px;">
+        <button id="btn-upload-room" class="upload-btn-large" style="flex: 1; padding: 14px 6px;">
+          <span class="icon-big">🖼️</span>
+          <span class="upload-title">Gallery</span>
+        </button>
+        <button id="btn-camera-room" class="upload-btn-large" style="flex: 1; padding: 14px 6px;">
+          <span class="icon-big">📷</span>
+          <span class="upload-title">Camera</span>
+        </button>
+      </div>
+      <!-- Shown after upload -->
+      <div class="upload-done hidden" id="room-done">
+        <span class="done-icon">✅</span>
+        <span>Room loaded</span>
+        <button id="btn-change-room" class="link-btn">Change</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: Furniture (visible after room is loaded) -->
+    <div class="controls-wrapper disabled" id="step-furniture">
+      <div class="step-header">
+        <span class="step-badge">2</span>
+        <p class="label">Place Furniture Image</p>
+      </div>
+      <div id="furniture-upload-area" style="display: flex; gap: 10px;">
+        <button id="btn-upload-furniture" class="upload-btn-large furniture-upload" style="flex: 1; padding: 14px 6px;">
+          <span class="icon-big">🖼️</span>
+          <span class="upload-title">Gallery</span>
+        </button>
+        <button id="btn-camera-furniture" class="upload-btn-large furniture-upload" style="flex: 1; padding: 14px 6px;">
+          <span class="icon-big">📷</span>
+          <span class="upload-title">Camera</span>
+        </button>
+      </div>
+      <div class="upload-done hidden" id="furniture-done">
+        <span class="done-icon">✅</span>
+        <span>Furniture placed — drag to move</span>
+        <button id="btn-change-furniture" class="link-btn">Change</button>
+      </div>
+
+      <!-- Transform controls -->
+      <div class="transform-controls hidden" id="transform-controls">
+        <p class="keyboard-hint" style="font-size: 0.75rem; color: #a5b4fc; margin-bottom: 10px; text-align: center;">
+          Keyboard: W/A/S/D to move, Q/E to rotate, Arrows for height
+        </p>
+        <label class="ctrl-label">Scale</label>
+        <input type="range" id="scale-slider" min="0.3" max="4" step="0.05" value="1" class="slider">
+        <label class="ctrl-label">Rotate</label>
+        <input type="range" id="rotate-slider" min="-180" max="180" step="1" value="0" class="slider">
+        
+        <label class="ctrl-label">🔍 Room Zoom</label>
+        <input type="range" id="zoom-slider" min="30" max="100" step="1" value="60" class="slider">
+        
+        <!-- Image Enhancement Controls -->
+        <label class="ctrl-label">✨ Brightness</label>
+        <input type="range" id="brightness-slider" min="0.5" max="2" step="0.1" value="1" class="slider">
+        
+        <label class="ctrl-label">🎨 Contrast</label>
+        <input type="range" id="contrast-slider" min="0" max="2" step="0.1" value="1" class="slider">
+        
+        <label class="ctrl-label">🌑 Shadow Intensity</label>
+        <input type="range" id="shadow-slider" min="0" max="1" step="0.1" value="0.4" class="slider">
+      </div>
+    </div>
+
+    <div id="gesture-monitor-wrap" class="hidden" style="position: fixed; bottom: 20px; right: 20px; width: 160px; height: 120px; border-radius: 12px; border: 2px solid var(--primary); overflow: hidden; z-index: 3000; box-shadow: 0 0 15px var(--primary-glow); background: #000;">
+      <video id="gesture-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+      <div id="gesture-overlay" style="position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; opacity: 0.5; pointer-events: none; font-size: 9px; font-weight: 700; color: #fff; text-align: center;">
+        <div style="border: 0.5px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.1);">MOVE L</div>
+        <div style="border: 0.5px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.1);">MOVE R</div>
+        <div style="border: 0.5px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.1);">SCALE -</div>
+        <div style="border: 0.5px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.1);">SCALE +</div>
+      </div>
+    </div>
+
+    <!-- Hidden file inputs -->
+    <input type="file" id="file-room" accept="image/*" style="display:none;">
+    <input type="file" id="file-room-cam" accept="image/*" capture="environment" style="display:none;">
+    <input type="file" id="file-furniture" accept="image/*" style="display:none;">
+    <input type="file" id="file-furniture-cam" accept="image/*" capture="environment" style="display:none;">
+
+    <!-- Actions -->
+    <div class="actions">
+      <button id="btn-antigravity" class="action-btn">
+        <span>⚡ Antigravity</span>
+        <small id="status-antigravity">OFF</small>
+      </button>
+      <button id="btn-voice" class="action-btn">
+        <span>🎙️ Voice Control</span>
+        <small id="status-voice">OFF</small>
+      </button>
+      <button id="btn-gesture" class="action-btn">
+        <span>🖐️ Gesture Mode</span>
+        <small id="status-gesture">OFF</small>
+      </button>
+      <button id="btn-reset" class="action-btn danger">
+        <span>🔄 Reset All</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 3D Scene -->
+  <a-scene
+    id="scene"
+    embedded
+    renderer="antialias: true; colorManagement: true; physicallyCorrectLights: true;"
+    vr-mode-ui="enabled: false"
+    loading-screen="enabled: false">
+
+    <!-- ── ASSETS ── -->
+    <a-assets timeout="5000">
+      <!-- Assets will be added dynamically -->
+    </a-assets>
+
+    <!-- ── LIGHTING (Dynamic) ── -->
+    <a-entity id="ambient-light" light="type: ambient; color: #FFF; intensity: 0.6"></a-entity>
+    <a-entity id="main-light" light="type: directional; color: #FFF; intensity: 0.8; castShadow: true; shadowCameraTop: 5; shadowCameraBottom: -5; shadowCameraLeft: -5; shadowCameraRight: 5" position="1 4 3"></a-entity>
+
+    <!-- ── ENVIRONMENT ── -->
+    <!-- Sky sphere — room photo fills this once uploaded -->
+    <a-sky id="sky-bg" color="#0d0d1f"></a-sky>
+
+    <!-- Room floor -->
+    <a-plane
+      id="room-floor"
+      position="0 0 0"
+      rotation="-90 0 0"
+      width="14" height="14"
+      material="color: #111827; roughness: 1; metalness: 0;"
+      shadow="receive: true">
+    </a-plane>
+
+    <!-- Floor grid overlay for 3D depth feel -->
+    <a-entity id="floor-grid" position="0 0.01 0" rotation="-90 0 0">
+      <a-plane
+        width="14" height="14"
+        material="color: #6366f1; opacity: 0.06; transparent: true; wireframe: false; shader: flat;">
+      </a-plane>
+    </a-entity>
+
+    <!-- Depth corner columns (visual anchors) -->
+    <a-box position="-5 1.5 -5" width="0.08" height="3" depth="0.08" material="color:#1e293b; opacity:0.5; transparent:true;"></a-box>
+    <a-box position=" 5 1.5 -5" width="0.08" height="3" depth="0.08" material="color:#1e293b; opacity:0.5; transparent:true;"></a-box>
+
+    <!-- ── FURNITURE ENTITY (draggable, thick 2.5D) ── -->
+    <a-entity
+      id="furniture-image"
+      position="0 1.1 -1.5"
+      visible="false"
+      drag-move>
+    </a-entity>
+
+    <!-- ── LIGHTING ── -->
+    <a-entity light="type: ambient; color: #bfcde8; intensity: 0.6"></a-entity>
+    <a-entity light="type: directional; color: #ffffff; intensity: 1.1; castShadow: true;" position="3 6 4"></a-entity>
+    <a-entity light="type: directional; color: #c7d2fe; intensity: 0.35;" position="-4 4 -2"></a-entity>
+    <a-entity light="type: point; color: #6366f1; intensity: 0.6; distance: 14;" position="0 5 0"></a-entity>
+
+    <!-- ── CAMERA ── -->
+    <a-entity id="camera-rig" position="0 1.8 4.5">
+      <a-camera
+        id="main-cam"
+        look-controls="enabled: true; reverseMouseDrag: false; touchEnabled: true; magicWindowTrackingEnabled: false;"
+        wasd-controls="enabled: false"
+        fov="60">
+      </a-camera>
+    </a-entity>
+
+  </a-scene>
+
+  <script src="app.js"></script>
+</body>
+</html>
